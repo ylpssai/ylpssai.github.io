@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Quiz Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.3/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.6.0/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            background-color: #fffaf0; /* Pearl color */
+            color: #333;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #main-container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        #quiz-container {
+            flex: 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 20px;
+            overflow-y: auto;
+            position: relative; /* For positioning footer */
+        }
+        #home-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
+            background-color: #fff;
+            border-radius: 8px;
+        }
+        #home-container h1 {
+            font-size: clamp(2.5rem, 6vw, 3.75rem); /* Responsive font size, ~60px max */
+            margin-bottom: 20px;
+        }
+        #start-button {
+            padding: 12px 24px;
+            font-size: clamp(1.25rem, 3vw, 1.5625rem); /* Responsive font size, ~25px max */
+            background: linear-gradient(45deg, #007bff, #00d4ff);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #start-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.2);
+        }
+        #right-pane {
+            flex: 1;
+            background-color: #fff;
+            padding: 20px;
+            border-left: 1px solid #ddd;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Center content */
+            overflow-y: auto;
+            min-width: 250px; /* Ensure right pane doesn't collapse too much */
+        }
+        #webcam-container {
+            width: clamp(150px, 20vw, 200px); /* Responsive webcam size */
+            height: clamp(150px, 20vw, 200px);
+            border: 2px solid #333;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        #dashboard-container {
+            flex: 1;
+            width: 100%;
+        }
+        #question-box {
+            background-color: #fff;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 30px 20px 5px; /* Further reduced bottom padding */
+            margin-bottom: 20px;
+            width: clamp(600px, 80vw, 800px); /* Responsive width */
+            height: clamp(150px, 20vh, 180px); /* Taller question box */
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5em; /* Spacing between elements */
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 1s ease, transform 1s ease;
+        }
+        #question-box.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #question-number {
+            font-size: clamp(2rem, 4vw, 2.5rem); /* Responsive font size, ~40px max */
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        #question-text {
+            font-size: clamp(1.75rem, 3vw, 2.1875rem); /* Responsive font size, ~35px max */
+            text-align: center;
+        }
+        #time-counter {
+            font-size: clamp(1.5rem, 3vw, 1.875rem); /* Responsive font size, ~30px max */
+            color: #721c24;
+            font-weight: bold;
+            margin-top: 20px; /* Outside question box */
+        }
+        #options-area {
+            width: clamp(600px, 70vw, 700px); /* Widened to prevent overlap */
+            height: clamp(300px, 40vh, 400px); /* Responsive height */
+            position: relative;
+            margin: 20px auto;
+        }
+        .option-button {
+            position: absolute;
+            width: clamp(140px, 20vw, 180px); /* Responsive width */
+            height: clamp(60px, 10vh, 80px); /* Responsive height */
+            padding: 5px; /* Reduced padding */
+            border: 4px solid transparent; /* Original thickness */
+            border-radius: 8px;
+            cursor: default;
+            font-size: clamp(1.5rem, 2.5vw, 1.875rem); /* Responsive font size, ~30px max */
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s ease, border 0.3s ease;
+        }
+        #option-A { top: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(45deg, #ff6f61, #ff9f84); } /* Coral gradient */
+        #option-B { top: 50%; left: 0; transform: translateY(-50%); background: linear-gradient(45deg, #40c4ff, #80deea); } /* Sky blue gradient */
+        #option-C { top: 50%; right: 0; transform: translateY(-50%); background: linear-gradient(45deg, #ffd740, #ffeb3b); } /* Yellow gradient */
+        #option-D { bottom: 0; left: 50%; transform: translateX(-50%); background: linear-gradient(45deg, #66bb6a, #81c784); } /* Green gradient */
+        .option-button.detected {
+            animation: flashDetected 0.3s infinite alternate; /* Faster flashing */
+        }
+        @keyframes flashDetected {
+            0% { background-color: #ffffff; border: 4px solid #800080; color: #333; } /* White background, purple border */
+            100% { background-color: transparent; border: 4px solid transparent; color: #333; }
+        }
+        .option-button.correct {
+            background: linear-gradient(45deg, #d4edda, #c3e6cb) !important;
+            color: #155724;
+            border: 4px solid green !important;
+        }
+        .option-button.wrong {
+            background: linear-gradient(45deg, #f8d7da, #f5c6cb) !important;
+            color: #721c24;
+            border: 4px solid red !important;
+        }
+        .option-button.highlighted-correct {
+            border: 4px solid #d4a017 !important;
+        }
+        #feedback-message {
+            margin-top: 15px;
+            font-size: clamp(2.5rem, 5vw, 3.75rem); /* Bigger font, ~60px max */
+            font-weight: bold;
+            min-height: 40px;
+            text-align: center; /* Centered */
+        }
+        #feedback-message.correct { color: green; }
+        #feedback-message.wrong { color: red; }
+        #score-container {
+            margin-top: 20px;
+            font-size: clamp(1.75rem, 3vw, 2.1875rem); /* Responsive font size, ~35px max */
+            font-weight: bold;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            opacity: 0;
+            transform: scale(0.9);
+            transition: opacity 1s ease, transform 1s ease;
+        }
+        #score-container.visible {
+            opacity: 1;
+            transform: scale(1);
+        }
+        #restart-button {
+            padding: 12px 24px;
+            font-size: clamp(1.25rem, 3vw, 1.5625rem); /* Responsive font size, ~25px max */
+            background: linear-gradient(45deg, #007bff, #00d4ff);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+        #restart-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.2);
+        }
+        #dashboard-container h2 {
+            font-size: clamp(1.5rem, 3vw, 1.875rem); /* Responsive font size, ~30px max */
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        #dashboard-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #dashboard-table th, #dashboard-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+            font-size: clamp(1.25rem, 2.5vw, 1.5625rem); /* Responsive font size, ~25px max */
+        }
+        #dashboard-table th {
+            background-color: #f9f9f9;
+        }
+        #total-score {
+            margin-top: 15px;
+            font-size: clamp(1.5rem, 3vw, 1.875rem); /* Responsive font size, ~30px max */
+            font-weight: bold;
+            text-align: center;
+        }
+        #confidence-container {
+            width: 100%;
+            font-size: clamp(1rem, 2vw, 1.25rem); /* Responsive font size, ~20px max */
+            display: flex;
+            justify-content: space-around;
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            margin: 0;
+            background-color: #d3d3d3; /* Gray background */
+            color: #808080; /* Gray text */
+            padding: 10px 0;
+            border-radius: 8px;
+        }
+        #confidence-container div {
+            margin: 0 5px;
+        }
+        .hidden { display: none !important; }
+        .blackout {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            opacity: 1;
+            z-index: 1000;
+            transition: opacity 1s ease;
+        }
+        .blackout.fade-out {
+            opacity: 0;
+        }
+        /* Media query for smaller screens like iPad */
+        @media (max-width: 1024px) {
+            #main-container {
+                flex-direction: column;
+            }
+            #quiz-container {
+                flex: 1;
+                padding: 10px;
+            }
+            #right-pane {
+                flex: none;
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid #ddd;
+                box-shadow: none;
+                padding: 10px;
+            }
+            #webcam-confidence-container {
+                justify-content: center;
+            }
+            #confidence-container {
+                position: static;
+                margin-top: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="main-container">
+        <div id="quiz-container">
+            <div id="home-container">
+                <h1>Welcome to the Camera Quiz Game</h1>
+                <button id="start-button" onclick="startGame()">Start Game</button>
+            </div>
+            <div id="game-container" class="hidden">
+                <div id="question-box">
+                    <div id="question-number"></div>
+                    <div id="question-text">Loading question...</div>
+                </div>
+                <div id="time-counter">Time: 5</div>
+                <div id="options-area"></div>
+                <div id="feedback-message"></div>
+                <div id="score-container" class="hidden">
+                    <h2>Quiz Completed!</h2>
+                    <p id="final-score-label">Your final score is:</p>
+                    <p id="final-score-value"></p>
+                    <button id="restart-button" onclick="restartGame()">Play Again?</button>
+                </div>
+                <div id="confidence-container">
+                    <div id="confidence-A">A: 0.00%</div>
+                    <div id="confidence-B">B: 0.00%</div>
+                    <div id="confidence-C">C: 0.00%</div>
+                    <div id="confidence-D">D: 0.00%</div>
+                </div>
+            </div>
+        </div>
+        <div id="right-pane">
+            <div id="webcam-confidence-container">
+                <div id="webcam-container"></div>
+            </div>
+            <div id="dashboard-container">
+                <h2>Score Dashboard</h2>
+                <table id="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>Question</th>
+                            <th>Points</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dashboard-body"></tbody>
+                </table>
+                <div id="total-score">Total: 0</div>
+            </div>
+        </div>
+    </div>
+    <div id="blackout" class="blackout hidden"></div>
+    <div id="label-container" style="display: none;"></div>
+
+    <script>
+        const URL = 'https://teachablemachine.withgoogle.com/models/XzSEieaku/';
+        const jsonUrl = 'https://ylpss-mslau.github.io/questions_v1.json';
+        let model, webcam, labelContainer, maxPredictions;
+        let allQuestions = [], selectedQuestions = [];
+        let currentQuestionIndex = 0, totalScore = 0;
+        const questionsPerGame = 10;
+        const WAIT_TIME = 200;
+        let isIos = /iPhone|iPad/.test(window.navigator.userAgent);
+        let answerConfirmed = false, classificationStarted = false;
+        let questionStartTime, timerInterval;
+        const scores = Array(questionsPerGame).fill(null);
+        let lastDetectedOption = null;
+
+        // DOM Elements
+        const homeContainerElement = document.getElementById('home-container');
+        const gameContainerElement = document.getElementById('game-container');
+        const questionBoxElement = document.getElementById('question-box');
+        const questionNumberElement = document.getElementById('question-number');
+        const questionTextElement = document.getElementById('question-text');
+        const timeCounterElement = document.getElementById('time-counter');
+        const optionsAreaElement = document.getElementById('options-area');
+        const feedbackMessageElement = document.getElementById('feedback-message');
+        const scoreContainerElement = document.getElementById('score-container');
+        const finalScoreLabelElement = document.getElementById('final-score-label');
+        const finalScoreValueElement = document.getElementById('final-score-value');
+        const dashboardBodyElement = document.getElementById('dashboard-body');
+        const totalScoreElement = document.getElementById('total-score');
+        const restartButtonElement = document.getElementById('restart-button');
+        const confidenceElements = {
+            A: document.getElementById('confidence-A'),
+            B: document.getElementById('confidence-B'),
+            C: document.getElementById('confidence-C'),
+            D: document.getElementById('confidence-D')
+        };
+        const blackoutElement = document.getElementById('blackout');
+        const webcamContainer = document.getElementById('webcam-container');
+
+        // Webcam Initialization
+        async function initWebcam() {
+            const modelURL = URL + 'model.json';
+            const metadataURL = URL + 'metadata.json';
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                const flip = true;
+                webcam = new tmImage.Webcam(200, 200, flip);
+                if (!(await checkCamera())) return false;
+                await webcam.setup();
+                if (isIos) {
+                    webcamContainer.innerHTML = ''; // Clear previous content
+                    webcamContainer.appendChild(webcam.webcam);
+                    const webCamVideo = document.getElementsByTagName('video')[0];
+                    webCamVideo.setAttribute("playsinline", true);
+                    webCamVideo.muted = "true";
+                    webCamVideo.style.width = '100%';
+                    webCamVideo.style.height = '100%';
+                } else {
+                    webcamContainer.innerHTML = ''; // Clear previous content
+                    webcamContainer.appendChild(webcam.canvas);
+                }
+                labelContainer = document.getElementById('label-container');
+                for (let i = 0; i < maxPredictions; i++) {
+                    labelContainer.appendChild(document.createElement('div'));
+                }
+                webcam.play();
+                window.requestAnimationFrame(loop);
+                return true;
+            } catch (e) {
+                alert("Failed to access webcam: " + e.message);
+                return false;
+            }
+        }
+
+        async function loop() {
+            await new Promise(r => setTimeout(r, WAIT_TIME));
+            webcam.update();
+            if (classificationStarted) await predict();
+            window.requestAnimationFrame(loop);
+        }
+
+        async function predict() {
+            if (answerConfirmed || currentQuestionIndex >= selectedQuestions.length) return;
+            const prediction = isIos ? await model.predict(webcam.webcam) : await model.predict(webcam.canvas);
+            let highest = -1, result;
+            for (let i = 0; i < maxPredictions; i++) {
+                const prob = prediction[i].probability;
+                const probPercent = (prob * 100).toFixed(2);
+                const className = prediction[i].className;
+                labelContainer.childNodes[i].innerHTML = `${className}: ${probPercent}%`;
+                if (confidenceElements[className]) {
+                    confidenceElements[className].textContent = `${className}: ${probPercent}%`;
+                }
+                if (prob > highest) {
+                    result = prediction[i];
+                    highest = prob;
+                }
+            }
+
+            // Update detected option background and border
+            if (result.probability >= 0.8) {
+                if (lastDetectedOption && lastDetectedOption !== result.className) {
+                    const lastButton = optionsAreaElement.querySelector(`#option-${lastDetectedOption}`);
+                    if (lastButton) lastButton.classList.remove('detected');
+                }
+                const detectedButton = optionsAreaElement.querySelector(`#option-${result.className}`);
+                if (detectedButton) detectedButton.classList.add('detected');
+                lastDetectedOption = result.className;
+            } else {
+                if (lastDetectedOption) {
+                    const lastButton = optionsAreaElement.querySelector(`#option-${lastDetectedOption}`);
+                    if (lastButton) lastButton.classList.remove('detected');
+                    lastDetectedOption = null;
+                }
+            }
+        }
+
+        async function checkCamera() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(device => device.kind === 'videoinput');
+            if (videoDevices.length === 0) {
+                alert("No camera detected.");
+                return false;
+            }
+            return true;
+        }
+
+        // Quiz Logic
+        async function fetchQuestions() {
+            try {
+                questionTextElement.textContent = "Fetching questions...";
+                const response = await fetch(jsonUrl);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                allQuestions = await response.json();
+                if (!Array.isArray(allQuestions) || allQuestions.length === 0) {
+                    questionTextElement.textContent = "No questions found.";
+                    return;
+                }
+                homeContainerElement.classList.remove('hidden');
+            } catch (error) {
+                questionTextElement.textContent = `Error: ${error.message}.`;
+            }
+        }
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        async function startGame() {
+            if (!(await initWebcam())) return;
+            homeContainerElement.classList.add('hidden');
+            gameContainerElement.classList.remove('hidden');
+            questionBoxElement.classList.remove('hidden');
+            totalScore = 0;
+            currentQuestionIndex = 0;
+            selectedQuestions = [];
+            answerConfirmed = false;
+            classificationStarted = false;
+            feedbackMessageElement.textContent = '';
+            feedbackMessageElement.className = '';
+            scoreContainerElement.classList.add('hidden');
+            questionTextElement.classList.remove('hidden');
+            optionsAreaElement.classList.remove('hidden');
+            scores.fill(null);
+            updateDashboard();
+
+            // Reset confidence display
+            Object.values(confidenceElements).forEach(el => el.textContent = `${el.id.replace('confidence-', '')}: 0.00%`);
+
+            shuffleArray(allQuestions);
+            selectedQuestions = allQuestions.slice(0, Math.min(allQuestions.length, questionsPerGame));
+            if (selectedQuestions.length > 0) {
+                displayQuestion();
+            } else {
+                questionTextElement.textContent = "Not enough questions.";
+            }
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            let timeLeft = 5;
+            timeCounterElement.textContent = `Time: ${timeLeft}`;
+            let optionsShown = false;
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timeCounterElement.textContent = `Time: ${timeLeft}`;
+                if (timeLeft === 4 && !optionsShown) {
+                    optionsAreaElement.style.display = 'block';
+                    classificationStarted = true;
+                    optionsShown = true;
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    if (!answerConfirmed) {
+                        const detectedButton = optionsAreaElement.querySelector(`#option-${lastDetectedOption}`);
+                        if (detectedButton && lastDetectedOption) {
+                            answerConfirmed = true;
+                            handleAnswer(lastDetectedOption);
+                        } else {
+                            scores[currentQuestionIndex] = 0;
+                            updateDashboard();
+                            moveToNextQuestion();
+                        }
+                    }
+                }
+            }, 1000);
+        }
+
+        function displayQuestion() {
+            clearInterval(timerInterval);
+            answerConfirmed = false;
+            lastDetectedOption = null;
+            classificationStarted = false;
+            feedbackMessageElement.textContent = '';
+            feedbackMessageElement.className = '';
+            optionsAreaElement.innerHTML = '';
+            optionsAreaElement.style.display = 'none';
+
+            if (currentQuestionIndex >= selectedQuestions.length) {
+                endGame();
+                return;
+            }
+
+            // Blackout transition
+            blackoutElement.classList.remove('hidden', 'fade-out');
+            setTimeout(() => {
+                blackoutElement.classList.add('fade-out');
+                setTimeout(() => {
+                    blackoutElement.classList.add('hidden');
+                    const currentQuestion = selectedQuestions[currentQuestionIndex];
+                    questionNumberElement.textContent = `Question ${currentQuestionIndex + 1}/${selectedQuestions.length}`;
+                    questionTextElement.textContent = currentQuestion.question;
+                    questionBoxElement.classList.remove('visible');
+                    setTimeout(() => {
+                        questionBoxElement.classList.add('visible');
+                    }, 10);
+                    startTimer();
+
+                    if (currentQuestion.options && typeof currentQuestion.options === 'object') {
+                        Object.entries(currentQuestion.options).forEach(([key, value]) => {
+                            const button = document.createElement('div');
+                            button.className = 'option-button';
+                            button.id = `option-${key}`;
+                            button.textContent = value; // Only show the option content
+                            button.dataset.optionKey = key;
+                            optionsAreaElement.appendChild(button);
+                        });
+                    } else {
+                        questionTextElement.textContent = `Error: Question ${currentQuestionIndex + 1} has no options.`;
+                        setTimeout(() => {
+                            currentQuestionIndex++;
+                            displayQuestion();
+                        }, 1500);
+                        return;
+                    }
+
+                    questionStartTime = Date.now();
+                }, 1000);
+            }, 10);
+        }
+
+        function handleAnswer(selectedOption) {
+            clearInterval(timerInterval);
+            const currentQuestion = selectedQuestions[currentQuestionIndex];
+            const correctAnswerKey = currentQuestion.correct_answer;
+            const selectedButton = optionsAreaElement.querySelector(`#option-${selectedOption}`);
+            const correctButton = optionsAreaElement.querySelector(`#option-${correctAnswerKey}`);
+
+            if (selectedOption === correctAnswerKey) {
+                scores[currentQuestionIndex] = 2;
+                totalScore += 2;
+                feedbackMessageElement.textContent = 'Correct!';
+                feedbackMessageElement.className = 'correct';
+                if (selectedButton) selectedButton.classList.add('correct');
+            } else {
+                scores[currentQuestionIndex] = -1;
+                totalScore -= 1;
+                feedbackMessageElement.textContent = 'Wrong!';
+                feedbackMessageElement.className = 'wrong';
+                if (selectedButton) selectedButton.classList.add('wrong');
+                if (correctButton) correctButton.classList.add('highlighted-correct');
+            }
+
+            updateDashboard();
+            setTimeout(moveToNextQuestion, 3500);
+        }
+
+        function moveToNextQuestion() {
+            currentQuestionIndex++;
+            displayQuestion();
+        }
+
+        function updateDashboard() {
+            dashboardBodyElement.innerHTML = '';
+            scores.forEach((score, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${index + 1}</td><td>${score !== null ? score : '-'}</td>`;
+                dashboardBodyElement.appendChild(row);
+            });
+            totalScoreElement.textContent = `Total: ${totalScore}`;
+        }
+
+        function endGame() {
+            clearInterval(timerInterval);
+            questionBoxElement.classList.add('hidden');
+            optionsAreaElement.classList.add('hidden');
+            feedbackMessageElement.textContent = '';
+            feedbackMessageElement.className = '';
+            timeCounterElement.classList.add('hidden'); // Hide counter when quiz is complete
+            finalScoreLabelElement.textContent = 'Your final score is:'; // Smaller font text
+            finalScoreValueElement.textContent = totalScore; // Score on next line, bigger font
+            finalScoreLabelElement.style.fontSize = 'clamp(1.25rem, 3vw, 1.875rem)'; // Smaller font (~30px max)
+            finalScoreValueElement.style.fontSize = 'clamp(3.5rem, 7vw, 5rem)'; // Bigger font (~80px max)
+            finalScoreValueElement.style.marginTop = '20px'; // Move score to next line
+            scoreContainerElement.classList.remove('hidden');
+            setTimeout(() => {
+                scoreContainerElement.classList.add('visible');
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                });
+            }, 10);
+            restartButtonElement.style.display = 'block';
+        }
+
+        function restartGame() {
+            webcamContainer.innerHTML = ''; // Remove previous canvas
+            timeCounterElement.classList.remove('hidden'); // Show counter on restart
+            finalScoreLabelElement.textContent = '';
+            finalScoreValueElement.textContent = '';
+            finalScoreLabelElement.style.fontSize = '';
+            finalScoreValueElement.style.fontSize = '';
+            finalScoreValueElement.style.marginTop = '';
+            startGame();
+            scoreContainerElement.classList.add('hidden');
+        }
+
+        // Start by fetching questions
+        fetchQuestions();
+    </script>
+</body>
+</html>
