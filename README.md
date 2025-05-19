@@ -1,1 +1,1 @@
-(Demo)[https://ylpssai.github.io/]
+[https://ylpssai.github.io/]
