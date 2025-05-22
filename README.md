@@ -1,1 +1,1 @@
-[Demo](https://ylpssai.github.io/)
+[YLPSS AI Team Website](https://ylpssai.github.io/)
